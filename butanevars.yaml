@@ -1,0 +1,60 @@
+passwd:
+  users:
+  - name: core
+    ssh_authorized_keys:
+      - sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIaaaaaaaaaaaaaaaaaaaaaaaaaaa example@quickvm.com
+  - name: example
+    ssh_authorized_keys:
+      - sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIaaaaaaaaaaaaaaaaaaaaaaaaaaa example@quickvm.com
+    groups:
+      - wheel
+      - sudo
+  - name: nomad
+    system: true
+  - name: vault
+    system: true
+  - name: consul
+    system: true
+
+disks:
+  instance_storage: true
+  root:
+    device: /dev/sda
+    size: 102400
+  data:
+    device: /dev/sdb
+
+system:
+  hostname: nomad
+  domainname: example.com
+  ip_address: 192.168.1.33
+nomad:
+  enabled: true
+  vars:
+restic:
+  enabled: true
+  vars:
+    backup_target: aws
+    aws_key_id: aws_key_id
+    aws_region: us-east-2
+    aws_secret_key: aws_secret_key
+    restic_password: supersecretencryptionpassword
+    restic_repository: s3:https://s3.amazonaws.com/example-bucket
+smallstep:
+  enabled: true
+  vars:
+    step_ca_fingerprint: smallstep_cert_fingerprint
+    step_ca_url: https://myca.mysmallstepteam.ca.smallstep.com
+    step_ca_provisioner: my_jwt_provisioner_name
+    step_provisioner_password: my_jwt_provisioner_password
+blazon:
+  enabled: true
+  vars:
+    blazon_notify_slack: true
+    blazon_slack_webhook_url: https://hooks.slack.com/services/my/slack/webhook_url
+consul:
+  enabled: false
+  vars:
+vault:
+  enabled: false
+  vars:

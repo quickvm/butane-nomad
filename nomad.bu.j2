@@ -1,0 +1,763 @@
+variant: fcos
+version: 1.4.0
+passwd:
+  users:
+{%- for item in passwd.users %}
+  - name: {{ item.name }}
+{%- if item.system %}
+    system: true
+{%- endif  %}
+{%- if item.groups %}
+    groups:
+{%- for item in item.groups %}
+      - {{ item }}
+{%- endfor %}
+{%- endif %}
+{%- if item.ssh_authorized_keys %}
+    ssh_authorized_keys:
+{%- for item in item.ssh_authorized_keys %}
+      - {{ item }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- if passwd.groups %}
+  groups:
+{%- for item in passwd.groups %}
+  - name: {{ item.name }}
+{%- endfor %}
+{%- endif %}
+
+storage:
+{%-  if disks.instance_storage %}
+  disks:
+  - device: {{ disks.root.device }}
+    wipe_table: false
+    partitions:
+      - number: 4
+        label: root
+        size_mib: {{ disks.root.size }}
+        resize: true
+      - number: 5
+        label: var-home
+        size_mib: 0
+  - device: {{ disks.data.device }}
+    partitions:
+      - label: var-opt
+        number: 1
+        size_mib: 0
+
+  filesystems:
+    - path: /var/home
+      device: /dev/disk/by-partlabel/var-home
+      format: xfs
+      wipe_filesystem: false
+      label: var-home
+      with_mount_unit: true
+    - path: /var/opt
+      device: /dev/disk/by-partlabel/var-opt
+      format: xfs
+      wipe_filesystem: false
+      label: var-opt
+      with_mount_unit: true
+{%- endif %}
+
+  directories:
+{%- if nomad.enabled %}
+  - path: /opt/nomad
+    mode: 0700
+    user:
+      name: nomad
+    group:
+      name: nomad
+
+  - path: /opt/nomad/data
+    mode: 0700
+    user:
+      name: nomad
+    group:
+      name: nomad
+
+  - path: /opt/nomad/images
+    mode: 0750
+    user:
+      name: nomad
+    group:
+      name: nomad
+
+  - path: /opt/nomad/storage
+    mode: 0750
+    user:
+      name: nomad
+    group:
+      name: nomad
+
+  - path: /etc/nomad/config
+    mode: 0700
+    user:
+      name: nomad
+    group:
+      name: nomad
+
+  - path: /etc/nomad/tls
+    mode: 0750
+    user:
+      name: nomad
+    group:
+      name: nomad
+
+  - path: /etc/nomad/plugins
+    mode: 0750
+    user:
+      name: nomad
+    group:
+      name: nomad
+{%- endif %}
+
+{%- if vault.enabled %}
+  - path: /etc/vault.d
+    mode: 0750
+    user:
+      name: vault
+    group:
+      name: vault
+
+  - path: /etc/vault.d/tls
+    mode: 0750
+    user:
+      name: vault
+    group:
+      name: vault
+
+  - path: /opt/vault
+    mode: 0750
+    user:
+      name: vault
+    group:
+      name: vault
+
+  - path: /opt/vault/data
+    mode: 0750
+    user:
+      name: vault
+    group:
+      name: vault
+{%- endif %}
+
+{%- if smallstep.enabled %}
+  - path: /etc/step
+    mode: 0750
+{%- endif %}
+
+{%- if restic.enabled %}
+  - path: /etc/restic
+    mode: 0750
+{%- endif %}
+
+  files:
+  - path: /etc/hostname
+    mode: 0644
+    overwrite: true
+    contents:
+      inline: {{ system.hostname }}.{{ system.domainname }}
+
+  - path: /etc/systemd/zram-generator.conf
+    mode: 0644
+    contents:
+      inline: |
+        # This config file enables a /dev/zram0 device with the default settings
+        [zram0]
+
+  - path: /etc/sysctl.d/20-silence-audit.conf
+    contents:
+      inline: |
+        # Raise console message logging level from DEBUG (7) to WARNING (4)
+        # so that audit messages don't get interspersed on the console that
+        # may frustrate a user trying to interactively log in.
+        kernel.printk=4
+
+{%- if blazon.enabled %}
+  - path: /usr/local/bin/blazon
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/blazon/master/bin/blazon
+      verification:
+        hash: "sha512-eaf44a45064cfd3aa1c423dfa0b90042227fd869bf6744372760848904f8b7bcb8304441395de9db374f861277d9c174b6fc0261cd2b6f9e0730f70ba45d2433"
+    mode: 0555
+
+  - path: /etc/systemd/system/blazon@.service
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/blazon/master/units/blazon%40.service
+      verification:
+        hash: "sha512-c6d521130b4207436beab83f4fd0b64ebbc8a575dcf2951c4dc47b3e69f7e16ad8ab692907be9beb7dca894f14f21c67b1365c01a090bf1af56b01361a005853"
+    mode: 0644
+{%- endif %}
+
+{%- if smallstep.enabled %}
+  - path: /etc/systemd/system/step-ca-bootstrap@.service
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/smallstep-systemd-units/master/units/step-ca-bootstrap%40.service
+      verification:
+        hash: "sha512-baf075400295052b76101ad7277c48c4ff909cff3647080cf2aae3dc9f3324af0240c99341e64e98202c446b12f54ad2fa7baa50732b79b76cf539b019e3a6bb"
+    mode: 0644
+
+  - path: /usr/local/bin/step
+    contents:
+      source: https://mirror.quickvm.com/smallstep/step-cli/0.21.0/step.gz
+      compression: gzip
+      verification:
+        hash: "sha512-9dede461f1b34df09022712bcea41058d6a563cfc713404f3a76effd24a624ee564813b9b4394fb9b5525ba5b991c9c0c57df6c7e1b73ef34f6e6a1c862955e4"
+    mode: 0555
+
+  - path: /etc/systemd/system/step-issue-cert@.service
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/smallstep-systemd-units/master/units/step-issue-cert%40.service
+      verification:
+        hash: "sha512-e6e76c1d2ebeb1cd7c2a592c3a26a69a0b54fd4cdfd57caa7bfb71b3f465e52830f020035892f448d008d36f7072a45ebc2e35bee9198aa778a6036f021d031c"
+    mode: 0644
+
+  - path: /etc/systemd/system/step-renew-cert@.service
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/smallstep-systemd-units/master/units/step-renew-cert%40.service
+      verification:
+        hash: "sha512-9118a9a1db165e6f636f5d4cc7c84f454bd9284713896fd9a991e237bf922d72ffb6177ef7183f1edf7d43565637d53a18cf53fdd8c8a06f9feefae38d597de0"
+    mode: 0644
+
+  - path: /etc/systemd/system/step-renew-cert@.timer
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/smallstep-systemd-units/master/units/step-renew-cert%40.timer
+      verification:
+        hash: "sha512-e8134c53362b4c8152651f2edb14142608f4ffe55e94a7a2f19f559140307818833c11cf80b6cb51b051902b46b74a8e43ae69b2db7c16ef71c7de9706690009"
+    mode: 0644
+{%- endif %}
+
+{%- if restic.enabled %}
+  - path: /usr/local/bin/restic-wrapper
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/restic-systemd-units/master/bin/restic-wrapper
+      verification:
+        hash: "sha512-8e8f847a7fef211d9584a03218a456cf2e8042a817af20af9cb6599ba164e97c094898ba1ae8d97e01e81644994f845083b55ec97ac8fb9d20084d3720e73e62"
+    mode: 0555
+
+  - path: /etc/systemd/system/restic@.service
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/restic-systemd-units/master/units/restic%40.service
+      verification:
+        hash: "sha512-b2b814b663206238690a9b23e39ea4aec9bfb7953b9a4659dc8873a4ab0d6ea52ae1f69c7ec790795d924618bd58c0481d3d3fc7d04b064da8d42392469a6204"
+    mode: 0644
+
+  - path: /etc/systemd/system/restic@.timer
+    contents:
+      source: https://raw.githubusercontent.com/quickvm/restic-systemd-units/master/units/restic%40.timer
+      verification:
+        hash: "sha512-dea028c7e7715cbe1622f067c1a3d3ce94521d87beb6b8f46ae73150b30ec3d5bc03b4bc6f36a6e9157a7370170808e455a7597e471c7af52b3cf37f7c660cf2"
+    mode: 0644
+
+  - path: /etc/restic/aws.conf
+    mode: 0640
+    contents:
+      inline: |
+        AWS_ACCESS_KEY_ID="{{ restic.vars.aws_key_id }}"
+        AWS_DEFAULT_REGION="{{ restic.vars.aws_region }}"
+        AWS_SECRET_ACCESS_KEY="{{ restic.vars.aws_secret_key }}"
+        RESTIC_BACKUP_EXCLUDES="--exclude-file /etc/restic/exclude.conf --exclude-if-present .restic_exclude"
+        RESTIC_BACKUP_PATHS="/opt/nomad"
+        RESTIC_PASSWORD="{{ restic.vars.restic_password }}"
+        RESTIC_REPOSITORY="{{ restic.vars.restic_repository }}"
+        RESTIC_RETENTION_POLICY="--keep-within-hourly 24h --keep-within-daily 7d --keep-within-weekly 1m --keep-within-monthly 1y --keep-within-yearly 7y"
+
+  - path: /etc/restic/exclude.conf
+    mode: 0640
+    contents:
+      inline: |
+        .cache
+        .cargo
+        .local/share/bottles
+        .local/share/containers/storage/overlay
+        .local/share/libvirt/images
+        .local/share/Trash
+        .rustup
+        go
+        *.img
+        *.iso
+        *.lo
+        *.o
+        *.pyc
+        *.qcow2.xz
+        *.raw.xz
+        *cache*/*
+        *Cache*/*
+        .vagrant.d
+        __pycache__
+        node_modules
+        venv
+{%- endif %}
+
+{%- if vault.enabled %}
+# Hashicorp Vault
+  - path: /usr/local/bin/vault
+    contents:
+      source: https://mirror.quickvm.com/hashicorp/vault/vault_1.11.1_linux_amd64.gz
+      compression: gzip
+      verification:
+        hash: "sha512-e2634b93b5aeaa718344bed23bd9269ef205b48897a0686c278e6e41279927e1b0a10d7558524950bcc38735dafc1eec41cf3d91d787c4f764531075fdd8421f"
+    mode: 0555
+
+  - path: /etc/vault.d/config/vault.hcl
+    mode: 0640
+    contents:
+      inline: |
+      ui = true
+      storage "file" {
+        path = "/opt/vault/data"
+      }
+      listener "tcp" {
+        address       = "0.0.0.0:8200"
+        tls_cert_file = "/etc/vault/tls/vault.crt"
+        tls_key_file  = "/etc/vault/tls/vault.key"
+        tls_client_ca_file = "/etc/vault/tls/vault-ca.crt"
+      }
+
+  - path: /etc/profile.d/69-vault.sh
+    overwrite: true
+    contents:
+      inline: |
+        export VAULT_ADDR=https://127.0.0.1:8200
+        export VAULT_CACERT=/etc/vault.d/tls/vault-ca.crt
+        export VAULT_CLIENT_CERT=/etc/vault.d/tls/vault.crt
+        export VAULT_CLIENT_KEY=/etc/vault.d/tls/vault.key
+        export VAULT_TLS_SERVER_NAME=localhost
+{%- endif %}
+
+{%- if nomad.enabled %}
+# Hashicorp Nomad
+  - path: /usr/local/bin/nomad
+    contents:
+      source: https://mirror.quickvm.com/hashicorp/nomad/nomad_1.3.2_linux_amd64.gz
+      compression: gzip
+      verification:
+        hash: "sha512-214b5c65e7bac89867d4e30185a833e44a682cc6226bc5fadb0897316586a41de4b6af71135d47154626f127281e4a8cb3ef4dd865dd4013fdb917f855d14553"
+    mode: 0555
+
+  - path: /etc/nomad/plugins/nomad-driver-podman
+    contents:
+      source: https://mirror.quickvm.com/hashicorp/nomad/nomad-driver-podman_0.4.0_linux_amd64.gz
+      compression: gzip
+      verification:
+        hash: "sha512-2681c11a41574d987ce770c4d4cfa03278e8cb9393dfd6c2f8d256f4cf7ec3016243ab5c0233fc6c6c749b83ab8a2bf5dd9ee4d399d83432e933f7564ddb68c4"
+    mode: 0555
+
+  - path: /etc/nomad/config/nomad.hcl
+    mode: 0640
+    contents:
+      inline: |
+        datacenter = "home"
+        region = "us"
+        data_dir = "/opt/nomad/data"
+        bind_addr = "0.0.0.0"
+
+{%- if smallstep.enabled %}
+        tls {
+          http = true
+          rpc = true
+
+          ca_file = "/etc/nomad/tls/nomad-ca.crt"
+          cert_file = "/etc/nomad/tls/nomad.crt"
+          key_file = "/etc/nomad/tls/nomad.key"
+
+          verify_server_hostname = true
+          verify_https_client    = false
+        }
+{%- endif %}
+
+        server {
+          enabled = true
+          bootstrap_expect = 1
+        }
+        client {
+          enabled = true
+          meta {
+            tags = "homelab"
+          }
+          options = {
+            "driver.denylist" = "docker"
+          }
+          host_volume "storage" {
+          path      = "/opt/nomad/storage"
+          read_only = false
+          }
+        }
+        plugin "qemu" {
+          config {
+            image_paths = ["/opt/nomad/images"]
+            args_allowlist = ["-drive", "-usbdevice"]
+          }
+        }
+        telemetry {
+          collection_interval = "30s"
+          prometheus_metrics = true
+          publish_allocation_metrics = true
+          publish_node_metrics = true
+        }
+        plugin "nomad-driver-podman" {
+          config {
+            socket_path = "unix://var/run/podman/podman.sock"
+            volumes {
+              enabled      = true
+            }
+          }
+        }
+
+  - path: /etc/profile.d/69-nomad.sh
+    overwrite: true
+    contents:
+      inline: |
+        export NOMAD_ADDR=https://127.0.0.1:4646
+        export NOMAD_CACERT=/etc/nomad/tls/nomad-ca.crt
+        export NOMAD_CLIENT_CERT=/etc/nomad/tls/nomad.crt
+        export NOMAD_CLIENT_KEY=/etc/nomad/tls/nomad.key
+        export NOMAD_TLS_SERVER_NAME=localhost
+        export NOMAD_HTTP_SSL=true
+{%- endif %}
+
+  - path: /etc/zincati/config.d/55-updates-strategy.toml
+    mode: 0644
+    contents:
+      inline: |
+        [updates]
+        strategy = "fleet_lock"
+        [updates.fleet_lock]
+        base_url = "https://fleetlock.quickvm.com/"
+
+  - path: /etc/zincati/config.d/99-disable-auto-updates.toml
+    mode: 0644
+    contents:
+      inline: |
+        [updates]
+        enabled = false
+
+  - path: /etc/profile.d/00-aliases.sh
+    overwrite: true
+    contents:
+      inline: |
+        alias vim="vi"
+
+  - path: /etc/profile.d/zz-default-editor.sh
+    overwrite: true
+    contents:
+      inline: |
+        export EDITOR=vi
+        export SYSTEMD_EDITOR=vi
+
+  - path: /etc/sudoers.d/vim-editor
+    overwrite: true
+    contents:
+      inline: |
+        Defaults  env_keep += "SYSTEMD_EDITOR EDITOR"
+
+  - path: /etc/profile.d/00-bash.sh
+    overwrite: true
+    contents:
+      inline: |
+        # Update the window size after every command
+        shopt -s checkwinsize
+        # Automatically trim long paths
+        PROMPT_DIRTRIM=2
+        # Hitory expansion with space-space
+        bind Space:magic-space
+        # Recursive globbing with **
+        shopt -s globstar 2> /dev/null
+        # Case insensitive file completion
+        bind "set completion-ignore-case on"
+        # Set hyphens and underscores as the same
+        bind "set completion-map-case on"
+        # Display matches for ambiguous patterns on tab
+        bind "set show-all-if-ambiguous on"
+        # History defaults and history sync
+        HISTSIZE=500000
+        HISTFILESIZE=$HISTSIZE
+        HISTCONTROL=ignorespace:ignoredups:erasedups:ignoreboth
+        _bash_history_sync() {
+            builtin history -a
+            HISTFILESIZE=$HISTSIZE
+            builtin history -c
+            builtin history -r
+        }
+        history() {
+            _bash_history_sync
+            builtin history "$@"
+        }
+        # Save multi-line commands as one
+        shopt -s cmdhist
+        # Ignore common commands
+        export HISTIGNORE="&:[ ]*:exit:ls:bg:fg:history:clear"
+        # Use ISO 8601 timestamp in history
+        HISTTIMEFORMAT='%F %T '
+        # Enable incremental history search
+        bind '"\e[A": history-search-backward'
+        bind '"\e[B": history-search-forward'
+        bind '"\e[C": forward-char'
+        bind '"\e[D": backward-char'
+        # Prepend cd to directory names
+        shopt -s autocd 2> /dev/null
+        # Correct spelling errors with tab-completion
+        shopt -s dirspell 2> /dev/null
+        # Correct spelling errors in cd
+        shopt -s cdspell 2> /dev/null
+
+systemd:
+  units:
+  - name: docker.service
+    mask: true
+    enabled: false
+
+  - name: docker.socket
+    mask: true
+    enabled: false
+
+  - name: podman.socket
+    mask: false
+    enabled: true
+
+  - name: docker-to-podman-sock.service
+    enabled: true
+    contents: |
+      [Unit]
+      Description=Create a docker.sock symlink pointing to podman.sock
+      After=podman.service
+      ConditionPathExists=!/var/run/docker.sock
+
+      [Service]
+      Type=oneshot
+      ExecStart=-/usr/bin/bash -c "ln -s /var/run/podman/podman.sock /var/run/docker.sock"
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - name: rpm-ostree-install.service
+    enabled: true
+    contents: |
+      [Unit]
+      Description=Layer RPMs
+      # We run after `systemd-machine-id-commit.service` to ensure that
+      # `ConditionFirstBoot=true` services won't rerun on the next boot.
+      After=systemd-machine-id-commit.service
+      After=network-online.target
+      ConditionPathExists=!/var/lib/rpm-ostree-install.stamp
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/bin/rpm-ostree install --allow-inactive systemd-oomd-defaults qemu restic
+      ExecStart=/bin/touch /var/lib/rpm-ostree-install.stamp
+      ExecStart=/bin/systemctl --no-block reboot
+
+      [Install]
+      WantedBy=multi-user.target
+
+{%- if vault.enabled %}
+  - name: vault-auto-init.service
+    enabled: true
+    contents: |
+      [Unit]
+      Description="Vault Auto Init - Auto init your vault"
+      Documentation=https://github.com/quickvm/vault-unseal
+      Requires=vault.service
+      After=vault.serviuce
+      ConditionPathExists=!/etc/vault.d/keys
+      ConditionPathExists=!/etc/vault.d/root_token.env
+
+      StartLimitIntervalSec=60
+      StartLimitBurst=3
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStartPre=bash -c "umask 177; vault operator init -format=json > /etc/vault.d/init.json"
+      ExecStart=bash -c "cat /etc/vault.d/init.json | jq -r '.unseal_keys_b64[]' > /etc/vault.d/keys"
+      ExecStart=bash -c "umask 177; echo VAULT_TOKEN=$(cat /etc/vault.d/init.json | jq -r '.root_token') > /etc/vault.d/root_token.env"
+      ExecStartPost=rm -f /etc/vault.d/init.json
+
+  - name: vault.service
+    enabled: true
+    contents: |
+        [Unit]
+        Description="HashiCorp Vault - A tool for managing secrets"
+        Documentation=https://www.vaultproject.io/docs/
+        Requires=network-online.target
+        After=network-online.target
+        ConditionFileNotEmpty=/etc/vault.d/vault.hcl
+        StartLimitIntervalSec=60
+        StartLimitBurst=3
+
+        [Service]
+        Type=notify
+        EnvironmentFile=/etc/vault.d/vault.env
+        User=vault
+        Group=vault
+        ProtectSystem=full
+        ProtectHome=read-only
+        PrivateTmp=yes
+        PrivateDevices=yes
+        SecureBits=keep-caps
+        AmbientCapabilities=CAP_IPC_LOCK
+        CapabilityBoundingSet=CAP_SYSLOG CAP_IPC_LOCK
+        NoNewPrivileges=yes
+        ExecStart=/usr/local/bin/vault server -config=/etc/vault.d/vault.hcl
+        ExecReload=/bin/kill --signal HUP $MAINPID
+        KillMode=process
+        KillSignal=SIGINT
+        Restart=on-failure
+        RestartSec=5
+        TimeoutStopSec=30
+        LimitNOFILE=65536
+        LimitMEMLOCK=infinity
+{%- endif %}
+
+{%- if nomad.enabled %}
+  - name: nomad.service
+    enabled: true
+    contents: |
+      [Unit]
+      Description=Nomad
+      Documentation=https://www.nomadproject.io/docs/
+{%- if smallstep.enabled %}
+      Wants=network-online.target step-issue-cert@nomad.service
+{{ else }}
+      Wants=network-online.target
+{%- endif %}
+      After=network-online.target rpm-ostree-install.service step-issue-cert@nomad.service
+
+      [Service]
+      ExecReload=/bin/kill -HUP $MAINPID
+      ExecStart=nomad agent \
+        -config /etc/nomad/config \
+        -data-dir /opt/nomad/data \
+        -plugin-dir /etc/nomad/plugins
+      KillMode=process
+      KillSignal=SIGINT
+      LimitNOFILE=infinity
+      LimitNPROC=infinity
+      TasksMax=infinity
+      Restart=on-failure
+      RestartSec=2
+      OOMScoreAdjust=-1000
+
+      [Install]
+      WantedBy=multi-user.target
+
+{%- if smallstep.enabled %}
+  - name: blazon@step-renew-cert@nomad.service
+    enabled: false
+    dropins:
+    - name: override.conf
+      contents: |
+        [Service]
+        Environment=BLAZON_NOTIFY_SLACK={{ blazon.vars.blazon_notify_slack }}
+        Environment=BLAZON_SLACK_WEBHOOK_URL="{{ blazon.vars.blazon_slack_webhook_url }}"
+{%- endif %}
+{%- endif %}
+
+{%- if smallstep.enabled %}
+  - name: step-ca-bootstrap@{{ smallstep.vars.step_ca_provisioner }}.service
+    enabled: true
+    dropins:
+    - name: override.conf
+      contents: |
+        [Unit]
+        Wants=network-online.target rpm-ostree-install.service
+        After=network-online.target rpm-ostree-install.service
+        [Service]
+        Environment=STEP_CA_FINGERPRINT={{ smallstep.vars.step_ca_fingerprint }}
+        Environment=STEP_CA_URL={{ smallstep.vars.step_ca_url }}
+
+  - name: step-issue-cert@nomad.service
+    enabled: true
+    dropins:
+    - name: override.conf
+      contents: |
+        [Unit]
+        Requires=step-ca-bootstrap@{{ smallstep.vars.step_ca_provisioner }}.service
+        After=step-ca-bootstrap@{{ smallstep.vars.step_ca_provisioner }}.service
+
+        [Service]
+        Environment=STEP_CONTEXT={{ smallstep.vars.step_ca_provisioner }}
+        Environment=STEP_CA_PROVISIONER={{ smallstep.vars.step_ca_provisioner }}
+        Environment=STEP_CA_FILE=/etc/nomad/tls/nomad-ca.crt
+        Environment=STEP_CRT_FILE=/etc/nomad/tls/nomad.crt
+        Environment=STEP_KEY_FILE=/etc/nomad/tls/nomad.key
+        Environment=STEP_FILE_OWNER=nomad
+        Environment=STEP_FILE_GROUP=nomad
+        Environment=STEP_FILE_MODE=0640
+        Environment=STEP_CRT_DURATION=24h
+        Environment=STEP_CRT_SUBJECT={{ system.hostname }}
+        Environment='STEP_SANS=--san apex --san {{ system.ip_address }} --san nomad --san 127.0.0.1 --san localhost --san server.us.nomad'
+        Environment=STEP_PROVISIONER_PASSWORD={{ smallstep.vars.step_provisioner_password }}
+        Environment=STEP_PROVISIONER_PASSWORD_FILE=/etc/step/profiles/internal/{{ smallstep.vars.step_ca_provisioner }}_jwk_provisioner_password
+
+  - name: step-renew-cert@nomad.service
+    enabled: true
+    dropins:
+    - name: override.conf
+      contents: |
+        [Unit]
+        Requires=step-ca-bootstrap@{{ smallstep.vars.step_ca_provisioner }}.service step-issue-cert@nomad.service
+        After=step-ca-bootstrap@{{ smallstep.vars.step_ca_provisioner }}.service step-issue-cert@nomad.service
+        OnFailure=blazon@%N.service step-issue-cert@%N.service
+
+        [Service]
+        Environment=STEP_CONTEXT={{ smallstep.vars.step_ca_provisioner }}
+        Environment=STEP_CA_PROVISIONER={{ smallstep.vars.step_ca_provisioner }}
+        Environment=STEP_CA_FILE=/etc/nomad/tls/nomad-ca.crt
+        Environment=STEP_CRT_FILE=/etc/nomad/tls/nomad.crt
+        Environment=STEP_KEY_FILE=/etc/nomad/tls/nomad.key
+        Environment=STEP_FILE_OWNER=nomad
+        Environment=STEP_FILE_GROUP=nomad
+        Environment=STEP_FILE_MODE=0640
+        ExecStartPost=systemctl reload %i.service
+
+  - name: step-renew-cert@nomad.timer
+    enabled: true
+    dropins:
+    - name: override.conf
+      contents: |
+        [Unit]
+        Requires=step-ca-bootstrap@internal.service step-issue-cert@nomad.service
+        After=step-ca-bootstrap@internal.service step-issue-cert@nomad.service
+{%- endif %}
+
+{%- if restic.enabled %}
+  - name: restic-init@{{ restic.vars.backup_target }}.service
+    enabled: true
+    contents: |
+      [Unit]
+      Description=Init Restic %i repository
+      After=network-online.target rpm-ostree-install.service
+      ConditionPathExists=!/var/lib/restic-%i-init.stamp
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/restic-wrapper /etc/restic/%i.conf init
+      ExecStart=/bin/touch /var/lib/restic-%i-init.stamp
+      SuccessExitStatus=1
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - name: restic@{{ restic.vars.backup_target }}.service
+    enabled: true
+    dropins:
+    - name: override.conf
+      contents: |
+        [Unit]
+        After=restic-init@{{ restic.vars.backup_target }}.service
+        OnFailure=blazon@%N.service
+
+  - name: blazon@restic@{{ restic.vars.backup_target }}.service
+    enabled: false
+    dropins:
+    - name: override.conf
+      contents: |
+        [Service]
+        Environment=BLAZON_NOTIFY_SLACK={{ blazon.vars.blazon_notify_slack }}
+        Environment=BLAZON_SLACK_WEBHOOK_URL="{{ blazon.vars.blazon_slack_webhook_url }}"
+{%- endif %}
